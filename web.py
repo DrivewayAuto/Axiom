@@ -8,7 +8,7 @@ from flask import Flask, request, jsonify, render_template
 from axiom.brain import Brain
 from axiom.memory import Memory
 
-app = Flask(__name__, template_folder="templates")
+app = Flask(__name__, template_folder="templates", static_folder="static", static_url_path="/static")
 brain = Brain()
 memory = Memory()
 
@@ -30,6 +30,15 @@ def chat():
     except Exception as e:
         reply = f"Hit a snag: {e}"
     return jsonify({"reply": reply})
+
+
+@app.route("/sw.js")
+def sw():
+    # minimal service worker so the app is installable / opens like a native app
+    js = ("self.addEventListener('install',e=>self.skipWaiting());"
+          "self.addEventListener('activate',e=>self.clients.claim());"
+          "self.addEventListener('fetch',e=>{});")
+    return app.response_class(js, mimetype="application/javascript")
 
 
 @app.route("/health")
