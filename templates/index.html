@@ -68,10 +68,18 @@ let recog=null, listening=false, handsFree=false, axVoice=null;
 if (!SR) { hint.textContent = "Voice input isn't supported in this browser - use Safari (iPhone) or Chrome (Android). Typing still works."; micBtn.style.opacity=.4; }
 
 // ---- Text to speech (Axiom talks) ----
+// Strong preference for a MALE english voice across iPhone / Android / desktop.
+const MALE_NAMES = ["Aaron","Arthur","Daniel","Fred","Alex","Rishi","Oliver","Thomas",
+  "Google UK English Male","Google US English","Microsoft David","Microsoft Mark",
+  "Microsoft Guy","Microsoft Christopher","Microsoft Eric","Microsoft Roger"];
+const FEMALE_HINT = /(female|Samantha|Victoria|Karen|Moira|Tessa|Fiona|Susan|Zira|Hazel|Catherine|Linda|Zoe|Allison|Ava|Serena|Nicky|Google UK English Female)/i;
 function pickVoice(){
-  const vs = speechSynthesis.getVoices();
-  axVoice = vs.find(v=>/en-US/i.test(v.lang) && /(male|Daniel|Alex|Aaron|Fred|Google US)/i.test(v.name))
-         || vs.find(v=>/en-US/i.test(v.lang)) || vs[0];
+  const vs = speechSynthesis.getVoices(); if(!vs.length) return;
+  const en = vs.filter(v=>/^en/i.test(v.lang));
+  axVoice = en.find(v=>MALE_NAMES.some(n=>v.name.includes(n)))
+         || en.find(v=>/male/i.test(v.name) && !/female/i.test(v.name))
+         || en.find(v=>!FEMALE_HINT.test(v.name))
+         || en[0] || vs[0];
 }
 if ("speechSynthesis" in window){ pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 
