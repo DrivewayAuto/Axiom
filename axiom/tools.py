@@ -32,20 +32,14 @@ def lookup_code(args):
     dictionary, then the full 3000+ code reference."""
     code = (args.get("code", "") or "").strip().upper()
 
-    # 1) Enriched entry: causes, test steps, follow-ups, shop notes
+    # 1) Enriched entry: give the definition + top causes, keep it short.
     e = ENRICHED_CODES.get(code)
     if e:
-        out = [f"{code}: {e['definition']}  [system: {e['system']} | severity: {e['severity']}]"]
-        out.append("  Common causes:")
-        out += [f"   - {c}" for c in e["common_causes"]]
-        out.append("  Diagnostic steps:")
-        out += [f"   {i}. {s}" for i, s in enumerate(e["diagnostic_steps"], 1)]
-        if e.get("follow_up_questions"):
-            out.append("  Ask the customer/tech:")
-            out += [f"   - {q}" for q in e["follow_up_questions"]]
-        if e.get("notes"):
-            out.append(f"  Shop notes: {e['notes']}")
-        return "\n".join(out)
+        top = e["common_causes"][:3]
+        causes = "; ".join(top)
+        return (f"{code}: {e['definition']}. "
+                f"Top causes: {causes}. "
+                "Say 'steps for " + code + "' if you want the full diagnostic.")
 
     # 2) Curated dictionary (definition + causes)
     result = mechanic_data.lookup_obd(code)
@@ -62,6 +56,19 @@ def lookup_code(args):
 
     return (f"{code} isn't in my reference (3000+ codes). Double-check the code, "
             "or I can reason about it with my full brain if the API key is on.")
+
+
+def code_steps(args):
+    """Full diagnostic steps + shop notes for an enriched code (only when asked)."""
+    code = (args.get("code", "") or "").strip().upper()
+    e = ENRICHED_CODES.get(code)
+    if not e:
+        return f"I don't have a step-by-step for {code} - ask me to walk it and I'll reason it out."
+    out = [f"{code} - {e['definition']}. Diagnostic steps:"]
+    out += [f"{i}. {s}" for i, s in enumerate(e["diagnostic_steps"], 1)]
+    if e.get("notes"):
+        out.append("Note: " + e["notes"])
+    return "\n".join(out)
 
 
 def oil_capacity(args):
@@ -168,6 +175,7 @@ REGISTRY = {
     "get_time": get_time,
     "calculate": calculate,
     "lookup_code": lookup_code,
+    "code_steps": code_steps,
     "oil_capacity": oil_capacity,
     "wiring_diagram": wiring_diagram,
     "spec_lookup": spec_lookup,
@@ -178,6 +186,9 @@ REGISTRY = {
 SCHEMAS = [
     {"name": "lookup_code",
      "description": "Get the exact definition and common causes of an OBD-II trouble code (e.g. P0420, P0301).",
+     "input_schema": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]}},
+    {"name": "code_steps",
+     "description": "Full step-by-step diagnostic procedure and shop notes for a trouble code. Only use when the user asks for the steps / how to diagnose / the full walkthrough.",
      "input_schema": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]}},
     {"name": "oil_capacity",
      "description": "Look up engine oil capacity (quarts) and recommended oil type for a vehicle. Pass make/model/engine, e.g. 'Honda Civic 1.5T'.",

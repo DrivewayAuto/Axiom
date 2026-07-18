@@ -64,6 +64,8 @@ class Brain:
         # Exact OBD-II code lookup (works great offline)
         m = CODE_RE.search(user_text)
         if m:
+            if any(w in t for w in ("step", "walk", "how do i", "how to", "diagnos", "procedure")):
+                return tools.code_steps({"code": m.group(1)})
             return tools.lookup_code({"code": m.group(1)})
 
         # Verified spec lookup (torque, lug torque, fluids) - works offline
