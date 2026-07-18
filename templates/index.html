@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f1523">
+<title>Axiom</title>
+<style>
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #0f1523; color: #e8ecf4;
+         display: flex; flex-direction: column; height: 100dvh; }
+  header { padding: 14px 16px; background: #161d30; border-bottom: 1px solid #26304a;
+           display: flex; align-items: center; gap: 10px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #38d39f; transition: background .2s; }
+  .dot.live { background: #ff5c5c; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  header h1 { font-size: 17px; letter-spacing: 2px; font-weight: 700; }
+  header .status { font-size: 12px; color: #8b96ad; margin-left: auto; }
+  #chat { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 88%; padding: 10px 13px; border-radius: 14px; line-height: 1.45;
+         font-size: 15px; white-space: pre-wrap; word-wrap: break-word; }
+  .me { background: #2b5cd9; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .ax { background: #1d2740; align-self: flex-start; border-bottom-left-radius: 4px; }
+  .typing { color: #8b96ad; font-style: italic; }
+  .controls { display: flex; gap: 8px; align-items: center; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+              background: #161d30; border-top: 1px solid #26304a; }
+  input { flex: 1; padding: 12px 14px; border-radius: 22px; border: 1px solid #2c3a5c;
+          background: #0f1523; color: #e8ecf4; font-size: 16px; outline: none; }
+  .iconbtn { width: 46px; height: 46px; flex: none; border-radius: 50%; border: none; font-size: 20px;
+             background: #2b5cd9; color: #fff; display: flex; align-items: center; justify-content: center; }
+  .iconbtn.mic.on { background: #ff5c5c; }
+  .iconbtn.hands { background: #22304e; font-size: 13px; font-weight: 700; letter-spacing: .5px; width: auto; padding: 0 14px; border-radius: 22px; height: 40px; }
+  .iconbtn.hands.on { background: #38d39f; color: #06231a; }
+  .bar { display: flex; gap: 8px; align-items: center; padding: 6px 12px 0; }
+  .hint { font-size: 11px; color: #6b7690; padding: 0 14px 6px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="dot" id="dot"></div><h1>AXIOM</h1>
+  <div class="status" id="status">tap mic to talk</div>
+</header>
+<div id="chat">
+  <div class="msg ax">Axiom here. Tap the mic and talk, or flip on Hands-Free and just keep talking. Give me a year/make/model/engine and the symptom, a code, a VIN, or ask for a spec.</div>
+</div>
+<div class="bar">
+  <button class="iconbtn hands" id="hands" type="button">HANDS-FREE: OFF</button>
+  <button class="iconbtn" id="stopspk" type="button" title="Stop talking">&#128263;</button>
+</div>
+<div class="hint" id="hint"></div>
+<form class="controls" id="f">
+  <button class="iconbtn mic" id="mic" type="button" title="Talk">&#127908;</button>
+  <input id="inp" placeholder="Ask Axiom..." autocomplete="off">
+  <button class="iconbtn" id="send" type="submit" title="Send">&#10148;</button>
+</form>
+
+<script>
+const chat=document.getElementById("chat"), f=document.getElementById("f"), inp=document.getElementById("inp"),
+      micBtn=document.getElementById("mic"), handsBtn=document.getElementById("hands"),
+      dot=document.getElementById("dot"), statusEl=document.getElementById("status"),
+      stopSpkBtn=document.getElementById("stopspk"), hint=document.getElementById("hint");
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recog=null, listening=false, handsFree=false, axVoice=null;
+
+if (!SR) { hint.textContent = "Voice input isn't supported in this browser - use Safari (iPhone) or Chrome (Android). Typing still works."; micBtn.style.opacity=.4; }
+
+// ---- Text to speech (Axiom talks) ----
+function pickVoice(){
+  const vs = speechSynthesis.getVoices();
+  axVoice = vs.find(v=>/en-US/i.test(v.lang) && /(male|Daniel|Alex|Aaron|Fred|Google US)/i.test(v.name))
+         || vs.find(v=>/en-US/i.test(v.lang)) || vs[0];
+}
+if ("speechSynthesis" in window){ pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+
+// strip markdown/list junk so speech sounds natural
+function speakable(t){
+  return t.replace(/[#*`_>]/g,"").replace(/^\s*[-\d]+[.)]\s*/gm,", ")
+          .replace(/\[(system|severity)[^\]]*\]/gi,"").replace(/\s+/g," ").trim();
+}
+function speak(text, after){
+  if (!("speechSynthesis" in window)) { if(after) after(); return; }
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(speakable(text));
+  if (axVoice) u.voice = axVoice;
+  u.rate = 1.02; u.pitch = .95;
+  u.onend = ()=>{ if(after) after(); };
+  u.onerror = ()=>{ if(after) after(); };
+  speechSynthesis.speak(u);
+}
+stopSpkBtn.onclick = ()=> speechSynthesis.cancel();
+
+// ---- UI helpers ----
+function add(cls,text){ const d=document.createElement("div"); d.className="msg "+cls; d.textContent=text;
+  chat.appendChild(d); chat.scrollTop=chat.scrollHeight; return d; }
+function setLive(on,label){ dot.classList.toggle("live",on); statusEl.textContent=label; }
+
+// ---- Send to Axiom ----
+async function ask(q){
+  add("me",q);
+  const t=add("ax typing","thinking...");
+  setLive(false,"thinking...");
+  try{
+    const r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({message:q})});
+    const j=await r.json();
+    t.classList.remove("typing"); t.textContent=j.reply;
+    chat.scrollTop=chat.scrollHeight;
+    speak(j.reply, ()=>{ if(handsFree) startListen(); });
+  }catch(e){
+    t.classList.remove("typing"); t.textContent="Connection problem - try again.";
+    if(handsFree) startListen();
+  }
+}
+
+f.addEventListener("submit",e=>{ e.preventDefault(); const q=inp.value.trim(); if(!q)return; inp.value=""; ask(q); });
+
+// ---- Speech recognition (you talk) ----
+function newRecog(){
+  const r=new SR(); r.lang="en-US"; r.interimResults=false; r.maxAlternatives=1; r.continuous=false;
+  r.onstart=()=>{ listening=true; micBtn.classList.add("on"); setLive(true,"listening..."); };
+  r.onresult=e=>{ const said=e.results[0][0].transcript.trim(); if(said) ask(said); };
+  r.onerror=e=>{ listening=false; micBtn.classList.remove("on");
+    setLive(false, e.error==="not-allowed" ? "mic blocked - allow mic access" : "tap mic to talk"); };
+  r.onend=()=>{ listening=false; micBtn.classList.remove("on");
+    if(!speechSynthesis.speaking) setLive(false, handsFree?"hands-free on":"tap mic to talk"); };
+  return r;
+}
+function startListen(){ if(!SR||listening)return; speechSynthesis.cancel(); recog=newRecog();
+  try{ recog.start(); }catch(e){} }
+function stopListen(){ if(recog&&listening){ try{recog.stop();}catch(e){} } }
+
+micBtn.onclick=()=>{ if(listening) stopListen(); else startListen(); };
+
+handsBtn.onclick=()=>{
+  handsFree=!handsFree;
+  handsBtn.classList.toggle("on",handsFree);
+  handsBtn.textContent = "HANDS-FREE: " + (handsFree?"ON":"OFF");
+  if(handsFree){ setLive(false,"hands-free on"); startListen(); }
+  else { stopListen(); speechSynthesis.cancel(); setLive(false,"tap mic to talk"); }
+};
+</script>
+</body>
+</html>
