@@ -43,7 +43,7 @@
   <div class="status" id="status">tap mic to talk</div>
 </header>
 <div id="chat">
-  <div class="msg ax">Axiom here. Tap the mic and talk, or flip on Hands-Free and just keep talking. Give me a year/make/model/engine and the symptom, a code, a VIN, or ask for a spec.</div>
+  <div class="msg ax">Axiom online. At your service. Give me a year, make, model and engine with the symptom — or a code, a VIN, or a spec — and I'll get to work.</div>
 </div>
 <div class="bar">
   <button class="iconbtn hands" id="hands" type="button">HANDS-FREE: OFF</button>
@@ -68,15 +68,22 @@ let recog=null, listening=false, handsFree=false, axVoice=null;
 if (!SR) { hint.textContent = "Voice input isn't supported in this browser - use Safari (iPhone) or Chrome (Android). Typing still works."; micBtn.style.opacity=.4; }
 
 // ---- Text to speech (Axiom talks) ----
-// Strong preference for a MALE english voice across iPhone / Android / desktop.
-const MALE_NAMES = ["Aaron","Arthur","Daniel","Fred","Alex","Rishi","Oliver","Thomas",
-  "Google UK English Male","Google US English","Microsoft David","Microsoft Mark",
-  "Microsoft Guy","Microsoft Christopher","Microsoft Eric","Microsoft Roger"];
-const FEMALE_HINT = /(female|Samantha|Victoria|Karen|Moira|Tessa|Fiona|Susan|Zira|Hazel|Catherine|Linda|Zoe|Allison|Ava|Serena|Nicky|Google UK English Female)/i;
+// "Jarvis" voice = a refined BRITISH MALE voice. Prefer en-GB male voices first
+// (Daniel on iOS, Google UK English Male on Android/Chrome, Microsoft Ryan/George
+// on Windows), then any British male, then any male, then anything.
+const GB_MALE = ["Daniel","Arthur","Oliver","Google UK English Male",
+  "Microsoft Ryan","Microsoft George","Microsoft Thomas"];
+const US_MALE = ["Aaron","Alex","Fred","Google US English","Microsoft David",
+  "Microsoft Guy","Microsoft Mark","Microsoft Christopher"];
+const FEMALE_HINT = /(female|Samantha|Victoria|Karen|Moira|Tessa|Fiona|Susan|Zira|Hazel|Catherine|Linda|Zoe|Allison|Ava|Serena|Nicky|Kate|Serena|Google UK English Female)/i;
 function pickVoice(){
   const vs = speechSynthesis.getVoices(); if(!vs.length) return;
+  const gb = vs.filter(v=>/en-GB/i.test(v.lang));
   const en = vs.filter(v=>/^en/i.test(v.lang));
-  axVoice = en.find(v=>MALE_NAMES.some(n=>v.name.includes(n)))
+  axVoice = gb.find(v=>GB_MALE.some(n=>v.name.includes(n)))            // British male by name
+         || gb.find(v=>/male/i.test(v.name) && !/female/i.test(v.name)) // any British male
+         || gb.find(v=>!FEMALE_HINT.test(v.name))                       // any British, not obviously female
+         || en.find(v=>US_MALE.some(n=>v.name.includes(n)))             // fall back to US male
          || en.find(v=>/male/i.test(v.name) && !/female/i.test(v.name))
          || en.find(v=>!FEMALE_HINT.test(v.name))
          || en[0] || vs[0];
@@ -93,7 +100,7 @@ function speak(text, after){
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(speakable(text));
   if (axVoice) u.voice = axVoice;
-  u.rate = 1.02; u.pitch = .95;
+  u.rate = .98; u.pitch = .92;
   u.onend = ()=>{ if(after) after(); };
   u.onerror = ()=>{ if(after) after(); };
   speechSynthesis.speak(u);
