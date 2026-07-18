@@ -25,6 +25,12 @@
     background:radial-gradient(130% 80% at 50% -5%,#0b1526 0%,#05070c 60%);
     color:var(--ink);display:flex;flex-direction:column;height:100dvh;overflow:hidden;
   }
+  /* splash */
+  #splash{position:fixed;inset:0;z-index:50;background:#000;display:flex;align-items:center;justify-content:center;
+    transition:opacity .5s ease;}
+  #splash img{width:66%;max-width:340px;height:auto;animation:sglow 1.6s ease-in-out infinite alternate;}
+  @keyframes sglow{from{filter:drop-shadow(0 0 6px rgba(59,157,255,.15));}to{filter:drop-shadow(0 0 26px rgba(59,157,255,.5));}}
+  #splash.hide{opacity:0;pointer-events:none;}
   /* header */
   header{display:flex;align-items:center;gap:11px;
     padding:calc(9px + env(safe-area-inset-top)) 15px 9px;
@@ -53,13 +59,20 @@
   .welcome img{width:200px;max-width:74%;height:auto;margin:0 auto 6px;
     filter:drop-shadow(0 8px 30px rgba(59,157,255,.25));}
   .welcome p{font-size:13px;color:var(--dim);max-width:300px;margin:6px auto 0;line-height:1.55;}
+  /* recent */
+  .recent{padding:2px 14px 0;}
+  .recent .lbl{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#647aa0;margin:2px 2px 6px;}
+  .recent .row{display:flex;gap:8px;flex-wrap:wrap;}
+  .rchip{font-size:12px;color:#b9cbe6;background:#0d1626;border:1px dashed #2a3a58;padding:7px 12px;border-radius:18px;
+    max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .rchip:active{background:#152238;}
   /* chips */
-  .chips{display:flex;gap:8px;flex-wrap:wrap;padding:4px 14px 8px;}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;padding:8px 14px 8px;}
   .chip{font-size:12.5px;font-weight:600;color:#d3e2f7;background:#101a2b;
     border:1px solid #22314d;padding:8px 13px;border-radius:20px;}
   .chip:active{background:#17263f;}
   /* controls */
-  .bar{display:flex;gap:8px;align-items:center;padding:6px 12px 0;}
+  .bar{display:flex;gap:8px;align-items:center;padding:2px 12px 0;}
   .toggle{font-size:12px;font-weight:700;letter-spacing:.4px;color:#c3d6f2;background:#101a2b;
     border:1px solid #22314d;height:38px;padding:0 14px;border-radius:20px;display:flex;align-items:center;gap:6px;}
   .toggle.on{background:linear-gradient(135deg,#0e5aa0,#1f7fd6);color:#eafaff;border-color:var(--blue);}
@@ -79,6 +92,8 @@
 </style>
 </head>
 <body>
+<div id="splash"><img src="/static/logo_full.png" alt="AXIOM"></div>
+
 <header>
   <img class="logo" src="/static/icon-192.png" alt="">
   <div class="brand"><span class="name">AXIOM</span><span class="sub">AI Mechanic Agent</span></div>
@@ -90,6 +105,11 @@
     <img src="/static/logo_full.png" alt="AXIOM - AI Mechanic Agent">
     <p>Your master mechanic. Tap the mic and talk, or use a shortcut below. Codes, specs, VINs, recalls &mdash; just ask.</p>
   </div>
+</div>
+
+<div class="recent" id="recentWrap" style="display:none;">
+  <div class="lbl">Recent</div>
+  <div class="row" id="recent"></div>
 </div>
 
 <div class="chips" id="chips">
@@ -115,13 +135,19 @@
 const chat=document.getElementById("chat"),f=document.getElementById("f"),inp=document.getElementById("inp"),
   micBtn=document.getElementById("mic"),handsBtn=document.getElementById("hands"),dot=document.getElementById("dot"),
   statusEl=document.getElementById("status"),muteBtn=document.getElementById("mute"),hint=document.getElementById("hint"),
-  chips=document.getElementById("chips");
+  chips=document.getElementById("chips"),recentWrap=document.getElementById("recentWrap"),recentRow=document.getElementById("recent"),
+  splash=document.getElementById("splash");
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 let recog=null,listening=false,handsFree=false,axVoice=null,welcomeGone=false;
 
+/* ---- splash: fade out after load ---- */
+function hideSplash(){splash.classList.add("hide");setTimeout(()=>splash.remove(),600);}
+window.addEventListener("load",()=>setTimeout(hideSplash,1100));
+setTimeout(hideSplash,2600); // safety
+
 if(!SR){hint.textContent="Voice input needs Safari (iPhone) or Chrome (Android). Typing works fine.";micBtn.style.opacity=.45;}
 
-/* voice: prefer British male (Jarvis) */
+/* ---- voice: prefer British male (Jarvis) ---- */
 const GB_MALE=["Daniel","Arthur","Oliver","Google UK English Male","Microsoft Ryan","Microsoft George","Microsoft Thomas"];
 const US_MALE=["Aaron","Alex","Fred","Google US English","Microsoft David","Microsoft Guy","Microsoft Mark"];
 const FEMALE=/(female|Samantha|Victoria|Karen|Moira|Tessa|Fiona|Susan|Zira|Hazel|Catherine|Linda|Zoe|Allison|Ava|Serena|Nicky|Kate|Google UK English Female)/i;
@@ -148,31 +174,51 @@ function speak(t,after){
 }
 muteBtn.onclick=()=>speechSynthesis.cancel();
 
+/* ---- recent questions (localStorage) ---- */
+function loadRecent(){try{return JSON.parse(localStorage.getItem("axiom_recent")||"[]");}catch(e){return[];}}
+function saveRecent(q){
+  if(!q||q.length>60)return;
+  let r=loadRecent().filter(x=>x.toLowerCase()!==q.toLowerCase());
+  r.unshift(q);r=r.slice(0,6);
+  localStorage.setItem("axiom_recent",JSON.stringify(r));renderRecent();
+}
+function renderRecent(){
+  const r=loadRecent();
+  if(!r.length){recentWrap.style.display="none";return;}
+  recentWrap.style.display="block";recentRow.innerHTML="";
+  r.forEach(q=>{const b=document.createElement("button");b.className="rchip";b.textContent=q;
+    b.onclick=()=>ask(q,false);recentRow.appendChild(b);});
+}
+renderRecent();
+
+/* ---- ui ---- */
 function clearWelcome(){if(welcomeGone)return;const w=chat.querySelector(".welcome");if(w)w.remove();welcomeGone=true;}
 function add(cls,text){clearWelcome();const d=document.createElement("div");d.className="msg "+cls;d.textContent=text;
   chat.appendChild(d);chat.scrollTop=chat.scrollHeight;return d;}
 function setLive(on,label){dot.classList.toggle("live",on);statusEl.textContent=label;}
 
-async function ask(q){
-  add("me",q);const t=add("ax typing","thinking...");setLive(false,"thinking...");
+/* viaVoice = true only when the question came from the mic; controls whether Axiom speaks */
+async function ask(q,viaVoice){
+  add("me",q);saveRecent(q);const t=add("ax typing","thinking...");setLive(false,"thinking...");
   try{
     const r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:q})});
     const j=await r.json();t.classList.remove("typing");t.textContent=j.reply;chat.scrollTop=chat.scrollHeight;
     setLive(false,handsFree?"hands-free on":"ready");
-    speak(j.reply,()=>{if(handsFree)startListen();});
-  }catch(e){t.classList.remove("typing");t.textContent="Connection problem - try again.";if(handsFree)startListen();}
+    if(viaVoice){speak(j.reply,()=>{if(handsFree)startListen();});}   // only talk back when talked to
+  }catch(e){t.classList.remove("typing");t.textContent="Connection problem - try again.";if(viaVoice&&handsFree)startListen();}
 }
-f.addEventListener("submit",e=>{e.preventDefault();const q=inp.value.trim();if(!q)return;inp.value="";ask(q);});
+f.addEventListener("submit",e=>{e.preventDefault();const q=inp.value.trim();if(!q)return;inp.value="";ask(q,false);});
 
 chips.addEventListener("click",e=>{
   const b=e.target.closest(".chip");if(!b)return;const q=b.dataset.q;
-  if(q.trim().endsWith("?")){ask(q);}else{inp.value=q;inp.focus();}
+  if(q.trim().endsWith("?")){ask(q,false);}else{inp.value=q;inp.focus();}
 });
 
+/* ---- speech recognition ---- */
 function newRecog(){
   const r=new SR();r.lang="en-US";r.interimResults=false;r.maxAlternatives=1;r.continuous=false;
   r.onstart=()=>{listening=true;micBtn.classList.add("on");setLive(true,"listening...");};
-  r.onresult=e=>{const said=e.results[0][0].transcript.trim();if(said)ask(said);};
+  r.onresult=e=>{const said=e.results[0][0].transcript.trim();if(said)ask(said,true);}; // voice -> speak back
   r.onerror=e=>{listening=false;micBtn.classList.remove("on");setLive(false,e.error==="not-allowed"?"allow mic access":"ready");};
   r.onend=()=>{listening=false;micBtn.classList.remove("on");if(!speechSynthesis.speaking)setLive(false,handsFree?"hands-free on":"ready");};
   return r;
